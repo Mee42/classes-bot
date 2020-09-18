@@ -3,6 +3,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 plugins {
     java
     kotlin("jvm") version "1.4.0"
+    id("com.github.johnrengelman.shadow") version "6.0.0"
 }
 
 group = "dev.mee42"
@@ -10,6 +11,7 @@ version = "1.0-SNAPSHOT"
 
 repositories {
     mavenCentral()
+    jcenter()
 }
 
 dependencies {
@@ -23,7 +25,7 @@ dependencies {
     implementation("org.jdbi","jdbi3-kotlin", "3.14.4")
     implementation("org.jdbi","jdbi3-kotlin-sqlobject", "3.14.4")
     implementation("org.xerial","sqlite-jdbc","3.32.3.2")
-
+    implementation("com.sedmelluq:lavaplayer:1.3.50")
 //    implementation("org.slf4j","slf4j-simple","1.7.25")
 }
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
@@ -35,3 +37,13 @@ val compileKotlin: KotlinCompile by tasks
 compileKotlin.kotlinOptions {
     freeCompilerArgs = listOf("-Xinline-classes")
 }
+tasks.withType<Jar> {
+    manifest {
+        attributes(
+                mutableMapOf(
+                        "Main-Class" to "dev.mee42.MainKt"
+                )
+        )
+    }
+}
+

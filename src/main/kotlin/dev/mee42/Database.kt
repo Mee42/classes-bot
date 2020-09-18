@@ -15,7 +15,11 @@ private val logger = Loggers.getLogger("Database")
 
 object Database {
 
-    private val jdbi = Jdbi.create("jdbc:sqlite:data.db")!!
+    fun file(filename: String) {
+       jdbi =  Jdbi.create("jdbc:sqlite:$filename")!!
+    }
+    private lateinit var jdbi: Jdbi
+    
     fun fullReset() {
         logger.info("Performing full reset")
         jdbi.withHandleUnchecked { h ->
@@ -49,9 +53,21 @@ object Database {
                         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                         period INT NOT NULL,
                         name TEXT NOT NULL,
-                        teacher TEXT NOT NULL
+                        teacher TEXT NOT NULL,
+                        major TEXT NULL,
+                        minor TEXT NULL
                     )
                 """)
+//                execute("""
+//                   DROP TABLE IF EXISTS channels
+//                """)
+//                execute("""
+//                    create table channels(
+//                        class_id int not null,
+//                        minor_channel text not null,
+//                        major_channel text not null
+//                    );
+//                """)
             }
         }
     }

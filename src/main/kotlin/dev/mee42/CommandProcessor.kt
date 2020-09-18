@@ -48,7 +48,8 @@ suspend fun processCommands(client: GatewayDiscordClient) = client.on(MessageCre
             channel = channel,
             message = message,
             argument = args,
-            author = author
+            author = author,
+            guild = channel.guild.await()
         )
         logger.info("${author.id.asString()} is running !$commandName. args: \"" + args.replace("\n", "\\n") + '"')
        try {

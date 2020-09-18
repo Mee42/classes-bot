@@ -129,4 +129,4 @@ val helpme = Command("helpme", "!helpme", "Need help with something? Use this co
 
 
 
-val commands = listOf(pingCommand, helpCommand, reset, dump, register, classes, slowPing, shared, helpme)
+val commands = listOf(pingCommand, helpCommand, reset, dump, register, classes, slowPing, shared, helpme, bell)
