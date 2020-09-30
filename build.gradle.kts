@@ -14,12 +14,18 @@ repositories {
     jcenter()
 }
 
+
+
+configure<JavaPluginConvention> {
+    sourceCompatibility = JavaVersion.VERSION_14
+    targetCompatibility = JavaVersion.VERSION_14
+}
+
 dependencies {
     implementation(kotlin("stdlib"))
     testCompile("junit", "junit", "4.12")
-    implementation("com.discord4j","discord4j-core","3.1.0")
+    implementation("com.discord4j","discord4j-core","3.1.1")
     implementation("org.jetbrains.kotlinx","kotlinx-coroutines-reactor","1.3.9")
-
     implementation("org.jdbi","jdbi3-core", "3.14.4")
     implementation("org.jdbi","jdbi3-sqlobject", "3.14.4")
     implementation("org.jdbi","jdbi3-kotlin", "3.14.4")
