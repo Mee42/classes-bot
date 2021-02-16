@@ -84,21 +84,24 @@ suspend fun schedule(channel: VoiceChannel) {
     val hour = LocalDateTime.now().hour
     val minute = LocalDateTime.now().minute
     val second = LocalDateTime.now().second
-    // we want get-to-class to fire at 9:45, 12, 1:35
+      // we want get-to-class to fire at 9:45, 12, 1:35
+    // 9:47, 11:37; 13:35
     when (hour) {
         9 -> {
-            if(minute < 45) {
-                val time = (45 - minute) * 1000 * 60L - second * 1000
+            if(minute < 47) {
+                val time = (47 - minute) * 1000 * 60L - second * 1000
                 println("waiting $time ms")
                 delay(time)
                 play(channel)
             } // if it's >= 45, just whatever, we missed it
         }
         11 -> {
-            val time = (60 - minute) * 1000 * 60L - second * 1000
-            println("waiting $time ms")
-            delay(time)
-            play(channel)
+            if(minute < 39) {
+                val time = (39 - minute) * 1000 * 60L - second * 1000
+                println("waiting $time ms")
+                delay(time)
+                play(channel)
+            }
         }
         13 -> {
             if(minute < 35) {
