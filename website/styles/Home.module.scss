@@ -1,0 +1,139 @@
+.container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  padding: 0;
+}
+
+.main {
+  padding: 5rem 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+}
+
+.footer {
+  width: 100%;
+  height: 100px;
+  border-top: 1px solid #eaeaea;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.footer a {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-grow: 1;
+}
+
+.title a {
+  color: #0070f3;
+  text-decoration: none;
+}
+
+.title a:hover,
+.title a:focus,
+.title a:active {
+  text-decoration: underline;
+}
+
+.title {
+  margin: 0;
+  line-height: 1.15;
+  font-size: 4rem;
+}
+
+.title,.description {
+  text-align: center;
+}
+
+.description {
+  line-height: 1.5;
+  font-size: 1.5rem;
+  vertical-align: center;
+}
+
+
+@media (max-width: 600px) {
+  .grid {
+    width: 100%;
+    flex-direction: column;
+  }
+}
+span.headerbox {
+  background-color: lightgrey;
+}
+.headerbox {
+  border-radius: 2px;
+  padding: 5px;
+  margin-left: 15px;
+  margin-right: 15px;
+}
+
+.dangerbox {
+  margin-top: 50px;
+  padding: 15px;
+  display: flex;
+  flex-direction: row;
+  margin-right: auto;
+  margin-left: auto;
+}
+.dangerbox * {
+  margin-left: 15px;
+  margin-right: 15px
+}
+.classesInputList {
+  margin-top: 25px;
+
+}
+.classInputLine {
+  display: flex;
+  flex-direction: row;
+
+  @media (max-width: 800px) {
+    flex-wrap: wrap  !important;
+  }
+  span {
+    width: fit-content;
+    white-space: nowrap;
+    margin-right: 30px;
+    margin-top: auto;
+    margin-bottom: auto;
+  }
+}
+.gradeSelector {
+  margin-top: 50px;
+  margin-right: auto;
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  flex-direction: row;
+  border-radius: 0;
+  justify-content: space-around;
+  gap: 10px;
+  button {
+    border-radius: 0;
+  }
+}
+
+.meMainContainer {
+  height: auto;
+  margin-bottom: auto;
+  padding-top: 100px;
+  width: 750px;
+}
+
+@media (max-width: 800px) {
+  .meMainContainer {
+    width: 90%;
+    flex-direction: column;
+  }
+}
