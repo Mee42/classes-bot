@@ -7,6 +7,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.io.File
 import java.util.concurrent.ConcurrentLinkedQueue
 
 const val API_URL = "http://localhost:7000"
@@ -35,9 +36,7 @@ fun main() {
     app.get("/api/oauth/redirect") { ctx ->
         val code = ctx.req.getParameter("code")
         println("got oauth redirect, code: $code")
-        val clientSecret = if(true) {
-            "o9nHSKFuillLkJxmOd9ocpBfVjgsvgAn"
-        } else ""
+        val clientSecret = File("clientsecret.txt").readLines()[0]
         val clientId = "747884756011712705"
         // make http request
         val data = mapOf(
