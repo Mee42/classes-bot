@@ -1,11 +1,11 @@
 
 import styles from '../styles/Home.module.scss'
-import {getUserAsync, Header, User} from './home'
+import {Class, getInitialClassesAsync, getUserAsync, Header, User} from './home'
 import React, {CSSProperties, useRef, useState} from "react";
 import {useRouter} from "next/router";
 import cookie from "js-cookie";
 
-type SaveState = "saved" | "saving" | "unsaved"
+type SaveState = "saved" | "saving" | "unsaved" | "error"
 
 export enum Grade { Freshman = "Freshman", Sophomore = "Sophomore", Junior = "Junior", Senior = "Senior" }
 const allGrades = [Grade.Freshman, Grade.Sophomore, Grade.Junior, Grade.Senior]
@@ -27,7 +27,8 @@ function GradeSelector({ saveState, onEdit, user }: { saveState: SaveState, onEd
     const [color, text] = {
             "saved": ["green", "Saved"],
             "saving": ["darkorange", "Saving..."],
-            "unsaved": ["red", "Unsaved"]
+            "unsaved": ["red", "Unsaved"],
+            "error": ["black", "Error Saving"]
     }[saveState]
 
     return <div className={styles.gradeSelector}>
@@ -50,10 +51,22 @@ function GradeSelector({ saveState, onEdit, user }: { saveState: SaveState, onEd
         }}>
             {text}
         </div>
+        <div style={{ margin: "0 auto 0", width: "20%"}}>
+            <input id="input_name"
+                   type="text"
+                   className="form-control"
+                   datatype="text"
+                   placeholder="Name (First)"
+                   style={{margin: "5px"}}
+                   defaultValue={user?.name ?? ""}
+                   onInput={onEdit}
+            />
+        </div>
         <div style={{
             display: "flex",
             flexDirection: "row",
             flexWrap: "nowrap",
+            margin: "0 auto 0"
         }}>
             {button(Grade.Freshman)}
             {button(Grade.Sophomore)}
@@ -67,26 +80,26 @@ function getSelectedGrade(): Grade {
     return allGrades.find(grade => document.getElementById("grade_" + grade)!!.classList.contains("active")) ?? Grade.Senior
 }
 
-
-function ClassSelector({ onEdit, user = null }: { onEdit: () => void, user?: User|null }) {
+function ClassSelector({ onEdit, initialClasses = null }: { onEdit: () => void, initialClasses?: Class[]|null }) {
     return <div className={styles.classesInputList}>
         {[1, 2, 3, 4, 5, 6, 7, 8].map(period =>
             <div key={period} className={styles.classInputLine}>
                 <span>Period {period}</span>
                 <input id={"input_classname_" + period} type="text" onInput={onEdit} className={"form-control"} datatype={"text"}
-                          placeholder={"Class Name"} defaultValue={user?.classes?.[period - 1]?.name ?? ""}
+                          placeholder={"Class Name"} defaultValue={initialClasses?.[period - 1]?.name ?? ""}
                           style={{margin: "5px"}}/>
                 <input id={"input_teacher_" + period} type="text" onInput={onEdit} className={"form-control"} datatype={"text"}
-                          placeholder={"Teacher"} defaultValue={user?.classes?.[period - 1]?.teacher ?? ""}
+                          placeholder={"Teacher"} defaultValue={initialClasses?.[period - 1]?.teacher ?? ""}
                           style={{margin: "5px"}}/>
+                <input id={"input_room_" + period} type={"text"} onInput={onEdit} className={"form-control"} datatype={"text"}
+                          placeholder={"Room"} defaultValue={initialClasses?.[period - 1]?.room ?? ""}
+                          style={{margin: "5px", width: "30%"}}/>
             </div>
         )}
     </div>
-
-
 }
 
-function SettingsBox({ user }: { user: User|null }) {
+function SettingsBox({ user, initialClasses }: { user: User|null, initialClasses?: Class[]|null }) {
     const [saveState, setSaveState] = useState<SaveState>("saved")
     const timeoutHandle = useRef<NodeJS.Timeout | null>(null)
     const onEdit = () => {
@@ -100,18 +113,30 @@ function SettingsBox({ user }: { user: User|null }) {
                 headers: {
                     auth: cookie.get("auth") ?? ""
                 },
-                body: JSON.stringify({ classes: [1, 2, 3, 4, 5, 6, 7, 8].map(period => ({
-                    name: (document.getElementById("input_classname_" + period) as HTMLInputElement).value,
-                    teacher: (document.getElementById("input_teacher_" + period) as HTMLInputElement).value
-                })), grade: getSelectedGrade() })
+                body: JSON.stringify({
+                    classes: [1, 2, 3, 4, 5, 6, 7, 8].map(period => ({
+                        name: (document.getElementById("input_classname_" + period) as HTMLInputElement).value,
+                        teacher: (document.getElementById("input_teacher_" + period) as HTMLInputElement).value,
+                        room: (document.getElementById("input_room_" + period) as HTMLInputElement).value,
+                        id: -1
+                    })),
+                    grade: getSelectedGrade(),
+                    name: (document.getElementById("input_name") as HTMLInputElement).value
+                })
                 // todo make this an actual post that saves the data
             })
-                .then(e => setSaveState("saved"))
+                .then(e => {
+                    if(e.status == 200) {
+                        setSaveState("saved")
+                    } else {
+                        setSaveState("error")
+                    }
+                })
         }, 1000)
     }
     return <>
         <GradeSelector user={user} saveState={saveState} onEdit={onEdit}/>
-        <ClassSelector onEdit={onEdit} user={user}/>
+        <ClassSelector onEdit={onEdit} initialClasses={initialClasses}/>
     </>
 }
 
@@ -119,16 +144,19 @@ function SettingsBox({ user }: { user: User|null }) {
 export default function Me() {
 
     const [user, setUser] = useState<User | null>(null)
+    const [initialClasses, setInitialClasses] = useState<Class[]|null>(null)
+
     const router = useRouter()
 
-    getUserAsync(setUser)
+    React.useEffect(() => getUserAsync(setUser), [])
+    React.useEffect(() => getInitialClassesAsync(setInitialClasses), [])
 
     return <div className={styles.container}>
         <Header user={user} router={router}/>
         <div className={styles.meMainContainer}>
             <h1 className={styles.title}>Your Profile</h1>
 
-            <SettingsBox user={user}/>
+            <SettingsBox user={user} initialClasses={initialClasses}/>
 
             <div className={styles.dangerbox}>
                 <button className={"btn btn-outline-danger"} style={{marginLeft: "auto"}} onClick={() => alert("unimplemented")}>Sign out from all locations</button>

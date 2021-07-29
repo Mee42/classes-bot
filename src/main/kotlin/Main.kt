@@ -55,12 +55,12 @@ fun main() {
             .body(encoded)
             .header("Content-Type", "application/x-www-form-urlencoded")
             .responseString()
-            .third.component1()?.takeUnless { it.isBlank()}
+            .third.component1()?.takeUnless { it.isBlank() }
             ?.fromJSON<OauthRedirectResponse>() ?: run {
-             ctx.res.status = 404
-            ctx.result("you probably did something wrong, discord returned nothing")
-            return@get
-    }
+                 ctx.res.status = 404
+                ctx.result("you probably did something wrong, discord returned nothing")
+                return@get
+            }
         println(oauthToken)
 
 
@@ -78,11 +78,21 @@ fun main() {
         // does the user exist already?
         if(users.none { it.id == userInfo.id }) {
             // create the account
-            users.add(User(id = userInfo.id, username = userInfo.username, discrim = userInfo.discriminator, classes = listOf(), grade = Grade.Senior))
+            users.add(
+                User(
+                    id = userInfo.id,
+                    username = userInfo.username,
+                    discrim = userInfo.discriminator,
+                    grade = Grade.Senior,
+                    name = ""
+                )
+            )
         }
+
         // generate token only if one does not already exist
         val authToken = authTokens.asIterable().firstOrNull { (k, v) -> v == userInfo.id }?.key
             ?: generateToken()
+
         authTokens[authToken] = userInfo.id
         ctx.cookie("auth", authToken)
         ctx.redirect("$WEBPAGE_URL/home")
@@ -90,46 +100,125 @@ fun main() {
 
 
 
-    app.get("/api/user/:id") { ctx ->
-        // returns information about a user with the id 'id'. if the id is @me, then return info for that user
-        // does not need authentication
-        val userID = getUserIDForUnauthorizedEndpoint(ctx) ?: return@get
-        val user = users.firstOrNull { it.id == userID } ?: run {
-            ctx.res.status = 404
-            ctx.result("User $userID not found")
-            return@get
-        }
-        ctx.result(user.toJSON())
-    }
 
 
-    // expects auth key if id = @me
+    // takes in: setclassesrequest with the ids all set to -1
     app.post("/api/user/set-classes") { ctx ->
-        println("set class requests")
         val authToken = ctx.header("auth") ?: run {
-            ctx.res.status = 400
-            ctx.result("No authorization token found")
+            ctx.res.status = 400; ctx.result("No authorization token found")
             return@post
         }
         val userID = authTokens[authToken] ?: run {
-            ctx.res.status = 403
-            ctx.result("authorization token is invalid")
+            ctx.res.status = 403; ctx.result("authorization token is invalid")
             return@post
         }
         val user = users.firstOrNull { it.id == userID } ?: run {
-            ctx.res.status = 404
-            ctx.result("User $userID not found")
+            ctx.res.status = 404; ctx.result("User $userID not found")
             return@post
         }
         // endpoint exists
         val classesSpecified = ctx.body().fromJSON<SetClassesRequest>()
-        user.classes = classesSpecified.classes
+        if(classesSpecified.classes.size != 8) {
+            ctx.res.status = 400; ctx.result("there must be exactly 8 classes")
+            return@post
+        }
+        // we need to make sure all the classes are in the classes table, and add/modify all the respective period objects
+        for((clazz, period) in classesSpecified.classes.zip(1..8)) {
+            // we need to make one with the right ids
+            if (clazz.room == "" || clazz.teacher == "" || clazz.room == "") {
+                periods.removeIf { it.user == user.id && it.period == period } // make sure they don't have an entry for that period
+            } else {
+               val newClass = classes.firstOrNull {
+                   it.room roughEquals clazz.room &&
+                   it.name roughEquals clazz.name &&
+                   it.teacher roughEquals clazz.teacher
+               } ?: run {
+                   // we need to create a class in the database if one does not exist already
+                   val c = Class(genClassID(), clazz.name, clazz.teacher, clazz.room)
+                   classes.add(c)
+                   c
+               }
+                // INSERT OR REPLACE
+                periods.removeIf { it.user == user.id && it.period == period }
+                periods.add(Period(period, newClass.id, user.id))
+            }
+        }
         user.grade = classesSpecified.grade
+        user.name = classesSpecified.name
+        classes.removeIf { periods.none { period -> period.`class` == it.id } }
+
     }
+
+    // returns all users
     app.get("/api/users") { ctx ->
         ctx.result(users.toJSON())
     }
+    // returns the user with the id :id
+    app.get("/api/users/:id") { ctx -> // if :id = @me, use auth token
+        val userID = getUserIDForUnauthorizedEndpoint(ctx) ?: return@get
+        val user = users.firstOrNull { it.id == userID } ?: run {
+            ctx.res.status = 404; ctx.result("User $userID not found"); return@get
+        }
+        ctx.result(user.toJSON())
+    }
+    // returns all classes
+    app.get("/api/classes") { ctx ->
+        ctx.result(classes.toJSON())
+    }
+    // returns a list of classes, 'null' if there's no class, in period order for the person specified by :id
+    app.get("/api/classes/:id") { ctx ->
+        val userID = getUserIDForUnauthorizedEndpoint(ctx) ?: return@get
+        val user = users.firstOrNull { it.id == userID } ?: run {
+            ctx.res.status = 404; ctx.result("User $userID not found"); return@get
+        }
+        ctx.result((1..8).map { period ->
+            val classId = periods.firstOrNull { it.period == period && it.user == user.id }?.`class`
+            classes.firstOrNull { it.id == classId } ?: Class(-1, "", "", "")
+        }.toJSON())
+    }
+    app.get("/api/periods") { ctx ->
+        ctx.result(periods.toJSON())
+    }
 }
+/*
+ schema:
+ users:
+   id INT
+   username STRING
+   discrim STRING
+   grade INT
+   name STRING
+
+ classes:
+   id INT
+   name STRING
+   teacher STRING
+   room STRING
+ periods:
+   period INT  1-8
+   user INT
+   class INT
+authTokens:
+   token STRING
+   user INT
+
+*/
+
+@Serializable
+data class User(val id: UserId, val username: String, val discrim: String, var grade: Grade, var name: String) // all classes in this object must be part of the global classes object
+@Serializable
+data class Class(val id: ClassId, val name: String, val teacher: String, val room: String) // -1 -> not class, 0 -> empty class
+@Serializable
+data class Period(val period: Int, val `class`: ClassId, val user: UserId)
+
+val authTokens = mutableMapOf<AuthToken, UserId>() // TODO transition to db
+val users = mutableListOf<User>()
+val classes = mutableListOf<Class>()
+val periods = mutableSetOf<Period>()
+
+
+infix fun String.roughEquals(b: String): Boolean = this.simplify() == b.simplify()
+fun String.simplify() = this.replace(Regex("""[\s.\-"']"""),"").lowercase()
 
 fun getUserIDForUnauthorizedEndpoint(ctx: Context): UserId? {
         val idRequested = ctx.pathParam("id")
@@ -138,7 +227,7 @@ fun getUserIDForUnauthorizedEndpoint(ctx: Context): UserId? {
             if(authToken == null) {
                 ctx.res.status = 404
 
-                ctx.result("auth token must be present with /user/@me call")
+                ctx.result("auth token must be present with a /@me call")
                 return null
             }
             val userID = authTokens[authToken]
@@ -160,19 +249,19 @@ fun generateToken(): String {
 
 typealias AuthToken = String
 typealias UserId = String
+typealias ClassId = Int
 
-val authTokens = mutableMapOf<AuthToken, UserId>()
-val users = mutableListOf<User>()
-
-@Serializable
-data class User(val id: UserId, val username: String, val discrim: String, var classes: List<Class>, var grade: Grade)
-@Serializable
-data class Class(val name: String, val teacher: String)
+fun genClassID(): Int {
+    return (classes.maxByOrNull { it.id }?.id?.takeUnless { it == -1 } ?: 7) + 1
+}
 
 enum class Grade { Freshman, Sophomore, Junior, Senior }
 
 @Serializable
-class SetClassesRequest(val classes: List<Class>, val grade: Grade)
+class SetClassesRequest(
+    val classes: List<Class>,
+    val grade: Grade,
+    val name: String) // in this request, the class id should be set to -1, as it is unknown
 
 val json = Json {
     encodeDefaults = true

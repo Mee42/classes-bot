@@ -1,10 +1,9 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    kotlin("jvm") version "1.4.32"
+    kotlin("jvm") version "1.5.21"
     maven
-    kotlin("plugin.serialization") version "1.4.32"
-
+    kotlin("plugin.serialization") version "1.5.21"
 }
 
 
@@ -25,10 +24,19 @@ dependencies {
     implementation("com.fasterxml.jackson.core:jackson-databind:2.10.3")
     implementation("com.github.kittinunf.fuel:fuel:2.3.1")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.2.1")
+    implementation(kotlin("stdlib-jdk8"))
 
 }
 
 
 tasks.withType<KotlinCompile> {
     kotlinOptions.jvmTarget = "11"
+}
+val compileKotlin: KotlinCompile by tasks
+compileKotlin.kotlinOptions {
+    jvmTarget = "1.8"
+}
+val compileTestKotlin: KotlinCompile by tasks
+compileTestKotlin.kotlinOptions {
+    jvmTarget = "1.8"
 }
