@@ -18,6 +18,8 @@ repositories {
 
 }
 
+val JDBI_VERSION = "3.21.0"
+
 dependencies {
     implementation("io.javalin:javalin:3.13.7")
     implementation("org.slf4j:slf4j-simple:1.8.0-beta4")
@@ -25,7 +27,10 @@ dependencies {
     implementation("com.github.kittinunf.fuel:fuel:2.3.1")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.2.1")
     implementation(kotlin("stdlib-jdk8"))
-
+    implementation("org.jdbi:jdbi3-core:$JDBI_VERSION")
+    implementation("org.jdbi:jdbi3-kotlin:$JDBI_VERSION")
+    implementation("org.jdbi:jdbi3-sqlite:$JDBI_VERSION")
+    implementation("org.xerial:sqlite-jdbc:$JDBI_VERSION")
 }
 
 

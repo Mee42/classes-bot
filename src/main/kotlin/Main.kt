@@ -12,6 +12,7 @@ const val API_URL = "https://classes.carson.sh"
 const val WEBPAGE_URL = "https://classes.carson.sh"
 
 fun main() {
+    DB.initTable()
     val app = Javalin.create { config ->
         config.enableCorsForAllOrigins()
     }.start(8002)
@@ -107,15 +108,13 @@ fun main() {
             if (clazz.room == "" || clazz.teacher == "" || clazz.room == "") {
                 // do nothing
             } else {
-                val classAlreadyExists =
-                    DB.fuzzyClassLookup(room = clazz.room, name = clazz.name, teacher = clazz.teacher)
+                val classAlreadyExists = DB.fuzzyClassLookup(room = clazz.room, name = clazz.name, teacher = clazz.teacher)
                 val classID = if (classAlreadyExists == null) {
                     // we need to create a class
                     val newID = DB.genClassID()
-                    DB.insertClass(Class(newID, room = clazz.room, name = clazz.name, teacher = clazz.teacher))
+                    DB.insertClass(Class(id = newID, room = clazz.room, name = clazz.name, teacher = clazz.teacher))
                     newID
                 } else classAlreadyExists.id
-                // INSERT OR REPLACE
                 DB.insertPeriod(Period(period, classID, user.id))
             }
         }
