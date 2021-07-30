@@ -2,34 +2,20 @@ import com.github.kittinunf.fuel.Fuel
 import com.github.kittinunf.fuel.core.extensions.authentication
 import io.javalin.Javalin
 import io.javalin.http.Context
-import io.javalin.http.sse.SseClient
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
-import java.util.concurrent.ConcurrentLinkedQueue
 
-const val API_URL = "http://localhost:7000"
-const val WEBPAGE_URL = "http://localhost:3000"
+const val API_URL = "https://classes.carson.sh"
+const val WEBPAGE_URL = "https://classes.carson.sh"
 
 fun main() {
     val app = Javalin.create { config ->
         config.enableCorsForAllOrigins()
-    }.start(7000)
+    }.start(8002)
     app.get("/") { ctx -> ctx.result("Hello, World!") }
-
-    val clients = ConcurrentLinkedQueue<SseClient>()
-    var n = 0
-    app.sse("/sse") { client ->
-        clients.add(client)
-        client.sendEvent("update", n.toString())
-        client.onClose { clients.remove(client) }
-    }
-    app.post("/incr") {
-        n++
-        clients.forEach { it.sendEvent("update", n.toString()) }
-    }
 
     val redirectURL = "$API_URL/api/oauth/redirect"
     // the discord url needs to be updated every time the redirect url is updated
@@ -46,6 +32,7 @@ fun main() {
             "code" to code,
             "redirect_uri" to redirectURL
         )
+
         fun encode(str: String) = str.replace(" ", "+")
         val encoded = data.map { (key, value) -> encode(key) + "=" + encode(value) }.joinToString(separator = "&")
 
@@ -56,12 +43,11 @@ fun main() {
             .responseString()
             .third.component1()?.takeUnless { it.isBlank() }
             ?.fromJSON<OauthRedirectResponse>() ?: run {
-                 ctx.res.status = 404
-                ctx.result("you probably did something wrong, discord returned nothing")
-                return@get
-            }
+            ctx.res.status = 404
+            ctx.result("you probably did something wrong, discord returned nothing")
+            return@get
+        }
         println(oauthToken)
-
 
 
         val userInfoJson = Fuel.get("https://discord.com/api/v8/oauth2/@me")
@@ -75,30 +61,23 @@ fun main() {
         // TODO how do we make sure this is good?
 
         // does the user exist already?
-        if(users.none { it.id == userInfo.id }) {
-            // create the account
-            users.add(
-                User(
-                    id = userInfo.id,
-                    username = userInfo.username,
-                    discrim = userInfo.discriminator,
-                    grade = Grade.Senior,
-                    name = ""
-                )
+        DB.insertIfDoesNotExist(
+            User(
+                id = userInfo.id,
+                username = userInfo.username,
+                discrim = userInfo.discriminator,
+                grade = Grade.Senior,
+                name = ""
             )
-        }
+        )
+
 
         // generate token only if one does not already exist
-        val authToken = authTokens.asIterable().firstOrNull { (k, v) -> v == userInfo.id }?.key
-            ?: generateToken()
-
-        authTokens[authToken] = userInfo.id
+        val authToken = generateToken()
+        DB.insertAuthToken(authToken, userInfo.id)
         ctx.cookie("auth", authToken)
         ctx.redirect("$WEBPAGE_URL/home")
     }
-
-
-
 
 
     // takes in: setclassesrequest with the ids all set to -1
@@ -107,117 +86,78 @@ fun main() {
             ctx.res.status = 400; ctx.result("No authorization token found")
             return@post
         }
-        val userID = authTokens[authToken] ?: run {
+        val userID = DB.lookupAuthToken(authToken) ?: run {
             ctx.res.status = 403; ctx.result("authorization token is invalid")
             return@post
         }
-        val user = users.firstOrNull { it.id == userID } ?: run {
+        val user = DB.lookupUserById(userID) ?: run {
             ctx.res.status = 404; ctx.result("User $userID not found")
             return@post
         }
         // endpoint exists
-        val classesSpecified = ctx.body().fromJSON<SetClassesRequest>()
-        if(classesSpecified.classes.size != 8) {
+        val setClassesReq = ctx.body().fromJSON<SetClassesRequest>()
+        if (setClassesReq.classes.size != 8) {
             ctx.res.status = 400; ctx.result("there must be exactly 8 classes")
             return@post
         }
-        // we need to make sure all the classes are in the classes table, and add/modify all the respective period objects
-        for((clazz, period) in classesSpecified.classes.zip(1..8)) {
+        DB.removeAllPeriodsWithUserid(userID)
+        // we need to make sure all the classes are in the classes table, and add all the respective period objects
+        for ((clazz, period) in setClassesReq.classes.zip(1..8)) {
             // we need to make one with the right ids
             if (clazz.room == "" || clazz.teacher == "" || clazz.room == "") {
-                periods.removeIf { it.user == user.id && it.period == period } // make sure they don't have an entry for that period
+                // do nothing
             } else {
-               val newClass = classes.firstOrNull {
-                   it.room roughEquals clazz.room &&
-                   it.name roughEquals clazz.name &&
-                   it.teacher roughEquals clazz.teacher
-               } ?: run {
-                   // we need to create a class in the database if one does not exist already
-                   val c = Class(genClassID(), clazz.name, clazz.teacher, clazz.room)
-                   classes.add(c)
-                   c
-               }
+                val classAlreadyExists =
+                    DB.fuzzyClassLookup(room = clazz.room, name = clazz.name, teacher = clazz.teacher)
+                val classID = if (classAlreadyExists == null) {
+                    // we need to create a class
+                    val newID = DB.genClassID()
+                    DB.insertClass(Class(newID, room = clazz.room, name = clazz.name, teacher = clazz.teacher))
+                    newID
+                } else classAlreadyExists.id
                 // INSERT OR REPLACE
-                periods.removeIf { it.user == user.id && it.period == period }
-                periods.add(Period(period, newClass.id, user.id))
+                DB.insertPeriod(Period(period, classID, user.id))
             }
         }
-        user.grade = classesSpecified.grade
-        user.name = classesSpecified.name
-        classes.removeIf { periods.none { period -> period.`class` == it.id } }
-
+        DB.updateUser(userID, setClassesReq.grade, setClassesReq.name)
+        DB.cleanClasses()
     }
 
     // returns all users
     app.get("/api/users") { ctx ->
-        ctx.result(users.toJSON())
+        ctx.result(DB.getUsers().toJSON())
     }
     // returns the user with the id :id
     app.get("/api/users/:id") { ctx -> // if :id = @me, use auth token
         val userID = getUserIDForUnauthorizedEndpoint(ctx) ?: return@get
-        val user = users.firstOrNull { it.id == userID } ?: run {
+        val user = DB.lookupUserById(userID) ?: run {
             ctx.res.status = 404; ctx.result("User $userID not found"); return@get
         }
         ctx.result(user.toJSON())
     }
     // returns all classes
     app.get("/api/classes") { ctx ->
-        ctx.result(classes.toJSON())
+        ctx.result(DB.getClasses().toJSON())
     }
     // returns a list of classes, 'null' if there's no class, in period order for the person specified by :id
     app.get("/api/classes/:id") { ctx ->
         val userID = getUserIDForUnauthorizedEndpoint(ctx) ?: return@get
-        val user = users.firstOrNull { it.id == userID } ?: run {
+        val user = DB.lookupUserById(userID) ?: run {
             ctx.res.status = 404; ctx.result("User $userID not found"); return@get
         }
         ctx.result((1..8).map { period ->
-            val classId = periods.firstOrNull { it.period == period && it.user == user.id }?.`class`
-            classes.firstOrNull { it.id == classId } ?: Class(-1, "", "", "")
+            val classId = DB.getPeriods().firstOrNull { it.period == period && it.user == user.id }?.`class`
+            DB.getClasses().firstOrNull { it.id == classId } ?: Class(-1, "", "", "")
         }.toJSON())
     }
     app.get("/api/periods") { ctx ->
-        ctx.result(periods.toJSON())
+        ctx.result(DB.getPeriods().toJSON())
     }
 }
-/*
- schema:
- users:
-   id INT
-   username STRING
-   discrim STRING
-   grade INT
-   name STRING
-
- classes:
-   id INT
-   name STRING
-   teacher STRING
-   room STRING
- periods:
-   period INT  1-8
-   user INT
-   class INT
-authTokens:
-   token STRING
-   user INT
-
-*/
-
-@Serializable
-data class User(val id: UserId, val username: String, val discrim: String, var grade: Grade, var name: String) // all classes in this object must be part of the global classes object
-@Serializable
-data class Class(val id: ClassId, val name: String, val teacher: String, val room: String) // -1 -> not class, 0 -> empty class
-@Serializable
-data class Period(val period: Int, val `class`: ClassId, val user: UserId)
-
-val authTokens = mutableMapOf<AuthToken, UserId>() // TODO transition to db
-val users = mutableListOf<User>()
-val classes = mutableListOf<Class>()
-val periods = mutableSetOf<Period>()
 
 
-infix fun String.roughEquals(b: String): Boolean = this.simplify() == b.simplify()
-fun String.simplify() = this.replace(Regex("""[\s.\-"']"""),"").lowercase()
+infix fun String.roughEquals(b: String): Boolean = this.normalize() == b.normalize()
+fun String.normalize() = this.replace(Regex("""[\s.\-"']"""),"").lowercase()
 
 fun getUserIDForUnauthorizedEndpoint(ctx: Context): UserId? {
         val idRequested = ctx.pathParam("id")
@@ -229,7 +169,7 @@ fun getUserIDForUnauthorizedEndpoint(ctx: Context): UserId? {
                 ctx.result("auth token must be present with a /@me call")
                 return null
             }
-            val userID = authTokens[authToken]
+            val userID = DB.lookupAuthToken(authToken)
             if(userID == null) {
                 ctx.res.status = 401
                 ctx.result("auth token does not exist")
@@ -244,14 +184,6 @@ fun generateToken(): String {
     val s = StringBuilder(10)
     for(n in 0 until 10) s.append(('a'..'z').random())
     return s.toString()
-}
-
-typealias AuthToken = String
-typealias UserId = String
-typealias ClassId = Int
-
-fun genClassID(): Int {
-    return (classes.maxByOrNull { it.id }?.id?.takeUnless { it == -1 } ?: 7) + 1
 }
 
 enum class Grade { Freshman, Sophomore, Junior, Senior }

@@ -14,3 +14,21 @@ a {
 * {
   box-sizing: border-box;
 }
+
+a {
+  color: #0070f3;
+  text-decoration: none !important;
+}
+h2 a:hover, h2 a:focus, h2 a:active {
+  text-decoration: underline;
+}
+span a:hover, span a:focus, span a:active {
+  text-decoration: underline;
+}
+
+@media (max-width: 800px) {
+  .header-div button {
+    padding-left: 2px;
+    padding-right: 2px;
+  }
+}

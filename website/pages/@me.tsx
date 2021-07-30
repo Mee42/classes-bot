@@ -1,6 +1,6 @@
 
 import styles from '../styles/Home.module.scss'
-import {Class, getInitialClassesAsync, getUserAsync, Header, User} from './home'
+import {API_URL, Class, getInitialClassesAsync, getUserAsync, Header, User} from './home'
 import React, {CSSProperties, useRef, useState} from "react";
 import {useRouter} from "next/router";
 import cookie from "js-cookie";
@@ -51,13 +51,12 @@ function GradeSelector({ saveState, onEdit, user }: { saveState: SaveState, onEd
         }}>
             {text}
         </div>
-        <div style={{ margin: "0 auto 0", width: "20%"}}>
+        <div style={{ margin: "0 1em 0", width: "max(20%, 7em)"}}>
             <input id="input_name"
                    type="text"
                    className="form-control"
                    datatype="text"
                    placeholder="Name (First)"
-                   style={{margin: "5px"}}
                    defaultValue={user?.name ?? ""}
                    onInput={onEdit}
             />
@@ -108,7 +107,7 @@ function SettingsBox({ user, initialClasses }: { user: User|null, initialClasses
         timeoutHandle.current = setTimeout(function() {
             setSaveState("saving")
             // now we need to actually save
-            fetch("http://localhost:7000/api/user/set-classes",{
+            fetch(API_URL + "/api/user/set-classes",{
                 method: "post",
                 headers: {
                     auth: cookie.get("auth") ?? ""
