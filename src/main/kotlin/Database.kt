@@ -1,9 +1,11 @@
+import discord4j.common.util.Snowflake
 import kotlinx.serialization.Serializable
 import org.jdbi.v3.core.Handle
 import org.jdbi.v3.core.Jdbi
 import org.jdbi.v3.core.kotlin.KotlinPlugin
 import org.jdbi.v3.core.kotlin.mapTo
 import org.jdbi.v3.core.result.ResultProducer
+import org.jdbi.v3.core.statement.Slf4JSqlLogger
 import org.jdbi.v3.core.statement.StatementContext
 import org.jdbi.v3.core.statement.UnableToCreateStatementException
 import org.jdbi.v3.sqlite3.SQLitePlugin
@@ -42,21 +44,20 @@ typealias ClassId = Int
 @Serializable
 data class User(val id: UserId, val username: String, val discrim: String, val grade: Grade, val name: String) // all classes in this object must be part of the global classes object
 @Serializable
-data class Class(val id: Int, val name: String, val teacher: String, val room: String) // -1 -> not class, 0 -> empty class
+data class Class(val id: ClassId,
+                 val name: String,
+                 val teacher: String,
+                 val room: String) // -1 -> not class, 0 -> empty class
 @Serializable
 data class Period(val period: Int, val `class`: ClassId, val user: UserId)
 
-//private val authTokens = mutableMapOf<AuthToken, UserId>() // TODO transition to db
-//private val users = mutableListOf<User>()
-//private val classes = mutableListOf<Class>()
-//private val periods = mutableSetOf<Period>()
 
 object DB {
     private val jdbi = Jdbi.create("jdbc:sqlite:test.db")
         .installPlugin(KotlinPlugin())
         .installPlugin(SQLitePlugin())
+        .setSqlLogger(Slf4JSqlLogger())
         .installPlugins()
-
     fun getJDBIInternal(): Jdbi = jdbi
 }
 private data class HandleWrapper(val h: Handle)
@@ -70,7 +71,7 @@ private fun DB.useHandle(f: HandleWrapper.() -> Unit) {
 
 
 
-fun DB.initTable() {
+fun DB.initTables() {
     withHandle {
         h.execute("""
             CREATE TABLE IF NOT EXISTS tokens (
@@ -108,8 +109,18 @@ fun DB.initTable() {
               FOREIGN KEY(class) REFERENCES classes(id)
             )
         """)
+        h.execute("""
+            CREATE TABLE IF NOT EXISTS channels (
+                id INT NOT NULL,
+                classname VARCHAR NOT NULL,
+                normalized_classname VARCHAR NOT NULL,
+                trash INT NOT NULL
+            )
+        """.trimIndent())
     }
 }
+
+
 fun DB.genClassID(): Int {
     return (getClasses().maxByOrNull { it.id }?.id?.takeUnless { it == -1 } ?: 7) + 3
 }
@@ -197,4 +208,11 @@ fun DB.getPeriods(): List<Period> = withHandle {
     h.createQuery("SELECT * FROM periods")
         .mapTo<Period>()
         .list()
+}
+fun DB.getSchedule(user: UserId): List<Class> {
+    return (1..8).map { period ->
+        // todo optimize if needed
+        val classId = DB.getPeriods().firstOrNull { it.period == period && it.user == user }?.`class`
+        DB.getClasses().firstOrNull { it.id == classId } ?: Class(-1, "", "", "")
+    }
 }

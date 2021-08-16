@@ -6,23 +6,44 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import java.io.File
 
 const val API_URL = "https://classes.carson.sh"
 const val WEBPAGE_URL = "https://classes.carson.sh"
 
+val Context.logger: Logger
+    get() = LoggerFactory.getLogger(this.path())
+
 fun main() {
-    DB.initTable()
+    DB.initTables()
     val app = Javalin.create { config ->
         config.enableCorsForAllOrigins()
     }.start(8002)
-    app.get("/") { ctx -> ctx.result("Hello, World!") }
+    app.before { ctx ->
+        ctx.logger.info("==> " + ctx.ip())
+    }
+    app.after { ctx ->
+        if(ctx.status() != 200) {
+            ctx.logger.info("<== " + ctx.status())
+        }
+    }
+    app.get("/") { ctx ->
+        ctx.result("Hello, World!")
+    }
 
     val redirectURL = "$API_URL/api/oauth/redirect"
     // the discord url needs to be updated every time the redirect url is updated
     app.get("/api/oauth/redirect") { ctx ->
-        val code = ctx.req.getParameter("code")
-        println("got oauth redirect, code: $code")
+        val code: String? = ctx.req.getParameter("code")
+        ctx.logger.debug("got oauth redirect, code: $code")
+        if(code == null) {
+            ctx.logger.warn("Code was null")
+            ctx.res.status = 400
+            ctx.result("No code")
+            return@get
+        }
         val clientSecret = File("clientsecret.txt").readLines()[0]
         val clientId = "747884756011712705"
         // make http request
@@ -45,21 +66,21 @@ fun main() {
             .third.component1()?.takeUnless { it.isBlank() }
             ?.fromJSON<OauthRedirectResponse>() ?: run {
             ctx.res.status = 404
-            ctx.result("you probably did something wrong, discord returned nothing")
+            ctx.result("You probably did something wrong, discord returned nothing")
+            ctx.logger.warn("Discord return nothing for oauth token request")
             return@get
         }
-        println(oauthToken)
 
 
         val userInfoJson = Fuel.get("https://discord.com/api/v8/oauth2/@me")
             .authentication()
             .bearer(oauthToken.access_token)
             .responseString().third.component1()!!
-        println("user info json: $userInfoJson")
+
+        ctx.logger.debug("user info json: $userInfoJson")
 
         val userInfo = userInfoJson
             .fromJSON<OauthMeResponse>().user
-        // TODO how do we make sure this is good?
 
         // does the user exist already?
         DB.insertIfDoesNotExist(
@@ -85,20 +106,24 @@ fun main() {
     app.post("/api/user/set-classes") { ctx ->
         val authToken = ctx.header("auth") ?: run {
             ctx.res.status = 400; ctx.result("No authorization token found")
+            ctx.logger.warn("No authorization token found")
             return@post
         }
         val userID = DB.lookupAuthToken(authToken) ?: run {
-            ctx.res.status = 403; ctx.result("authorization token is invalid")
+            ctx.res.status = 403; ctx.result("Authorization token is invalid")
+            ctx.logger.warn("Authorization token is invalid")
             return@post
         }
         val user = DB.lookupUserById(userID) ?: run {
             ctx.res.status = 404; ctx.result("User $userID not found")
+            ctx.logger.warn("User $userID not found")
             return@post
         }
         // endpoint exists
         val setClassesReq = ctx.body().fromJSON<SetClassesRequest>()
         if (setClassesReq.classes.size != 8) {
             ctx.res.status = 400; ctx.result("there must be exactly 8 classes")
+            ctx.logger.warn("There must be exactly 8 classes, got ${setClassesReq.classes.size}")
             return@post
         }
         DB.removeAllPeriodsWithUserid(userID)
@@ -128,10 +153,7 @@ fun main() {
     }
     // returns the user with the id :id
     app.get("/api/users/:id") { ctx -> // if :id = @me, use auth token
-        val userID = getUserIDForUnauthorizedEndpoint(ctx) ?: return@get
-        val user = DB.lookupUserById(userID) ?: run {
-            ctx.res.status = 404; ctx.result("User $userID not found"); return@get
-        }
+        val user =  getUserForUnauthorizedEndpoint(ctx) ?: return@get
         ctx.result(user.toJSON())
     }
     // returns all classes
@@ -140,24 +162,30 @@ fun main() {
     }
     // returns a list of classes, 'null' if there's no class, in period order for the person specified by :id
     app.get("/api/classes/:id") { ctx ->
-        val userID = getUserIDForUnauthorizedEndpoint(ctx) ?: return@get
-        val user = DB.lookupUserById(userID) ?: run {
-            ctx.res.status = 404; ctx.result("User $userID not found"); return@get
-        }
-        ctx.result((1..8).map { period ->
-            val classId = DB.getPeriods().firstOrNull { it.period == period && it.user == user.id }?.`class`
-            DB.getClasses().firstOrNull { it.id == classId } ?: Class(-1, "", "", "")
-        }.toJSON())
+        val user = getUserForUnauthorizedEndpoint(ctx) ?: return@get
+        ctx.result(DB.getSchedule(user.id).toJSON())
     }
     app.get("/api/periods") { ctx ->
         ctx.result(DB.getPeriods().toJSON())
     }
+    discordInit()
 }
 
 
 infix fun String.roughEquals(b: String): Boolean = this.normalize() == b.normalize()
 fun String.normalize() = this.replace(Regex("""[\s.\-"']"""),"").lowercase()
 
+// returns null if you should return
+fun getUserForUnauthorizedEndpoint(ctx: Context): User? {
+    val userID = getUserIDForUnauthorizedEndpoint(ctx) ?: return null
+    val user = DB.lookupUserById(userID)
+    if(user == null) {
+        ctx.res.status = 404;
+        ctx.result("User $userID not found");
+        ctx.logger.info("User $userID not found")
+    }
+    return user
+}
 fun getUserIDForUnauthorizedEndpoint(ctx: Context): UserId? {
         val idRequested = ctx.pathParam("id")
         val authToken = ctx.header("auth")
@@ -199,7 +227,6 @@ val json = Json {
 }
 inline fun <reified T> String.fromJSON(): T = json.decodeFromString(this)
 inline fun <reified T> T.toJSON(): String = json.encodeToString(this)
-
 
 
 @Serializable
