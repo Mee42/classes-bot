@@ -5,16 +5,18 @@ import discord4j.core.`object`.PermissionOverwrite
 import discord4j.core.`object`.entity.Member
 import discord4j.core.`object`.entity.Message
 import discord4j.core.`object`.entity.channel.TextChannel
+import discord4j.core.`object`.entity.channel.TopLevelGuildMessageChannel
 import discord4j.core.event.domain.message.MessageCreateEvent
-import discord4j.core.spec.EmbedCreateFields
-import discord4j.core.spec.EmbedCreateSpec
-import discord4j.core.spec.TextChannelCreateSpec
-import discord4j.core.spec.TextChannelEditSpec
+import discord4j.core.spec.*
 import discord4j.rest.util.Color
 import discord4j.rest.util.Permission
 import discord4j.rest.util.PermissionSet
 import org.slf4j.LoggerFactory
+import reactor.core.publisher.Flux
+import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.InputStream
+import java.time.Instant
 
 fun discordInit() {
     initCommands()
@@ -50,7 +52,7 @@ fun handleMessage(e: MessageCreateEvent) {
     commands[command]?.invoke(context) ?: context.userFuckedUp("Can't find a command with the name of \"$command\"")
 }
 
-data class Context(val event: MessageCreateEvent,
+private data class Context(val event: MessageCreateEvent,
                    val message: Message,
                    val author: Member,
                    val args: String,
@@ -70,7 +72,7 @@ data class Context(val event: MessageCreateEvent,
         throw UserFuckedUpException(str)
     }
 }
-val commands = mutableMapOf<String, (Context) -> Unit>()
+private val commands = mutableMapOf<String, (Context) -> Unit>()
 fun <A, B> A.then(f: (A) -> B): B = f(this)
 
 fun initCommands() {
@@ -112,6 +114,69 @@ fun initCommands() {
         }
         syncCommand()
     }
+    "DELETE" {
+
+        if(this.author.id != carsonID) {
+            userFuckedUp("Only for <@293853365891235841>")
+        }
+        client.getGuildChannels(guildID)
+            .ofType(TextChannel::class.java)
+            .filter { it.categoryId.map { id -> id == majorId || id == minorId }.orElse(false) }
+            .flatMap { it.delete() }
+            .blockLast()
+
+        send("deleted all of em")
+
+    }
+    "dump" {
+        if(this.author.id != carsonID) {
+            userFuckedUp("Only for <@293853365891235841>")
+        }
+        val dumpChannelId = Snowflake.of(877025833724813312)
+
+        val dumpChannel = client.getChannelById(dumpChannelId)
+            .cast(TextChannel::class.java)
+            .block()!!
+
+        val channelsToDelete = client.getGuildChannels(guildID)
+            .ofType(TextChannel::class.java)
+            .filter { it.categoryId.map { id -> id == majorId || id == minorId }.orElse(false) }
+            .collectList()
+            .block()!!
+
+        for(channel in channelsToDelete) {
+            val loadingMessage = dumpChannel.createMessage("Scanning " + channel.name + " <#" + channel.id.asString() + ">").block()!!
+            val buffer = StringBuffer()
+            val processedMessages = channel.getMessagesBefore(Snowflake.of(Instant.now()))
+                .flatMap {
+                    it.authorAsMember.map { x -> x to it }
+                        .onErrorReturn(null to it)
+                }
+                .collectList()
+                .flatMapMany { Flux.fromIterable(it.reversed()) }
+                .doOnNext { (member: Member?, message) ->
+                    buffer.append(message.timestamp.epochSecond)
+                    buffer.append(' ')
+                    buffer.append(member?.username ?: "Unknown")
+                    buffer.append('#')
+                    buffer.append(member?.discriminator ?: "0000")
+                    buffer.append(" : ")
+                    buffer.append(message.content)
+                    buffer.append('\n')
+                }
+                .count()
+                .block() ?: -1
+            if(processedMessages > 10) {
+                dumpChannel.createMessage(
+                    MessageCreateSpec.create()
+                        .withContent(channel.name + " Messages: $processedMessages")
+                        .withFiles(MessageCreateFields.File.of("contents.txt", buffer.toString().byteInputStream()))
+                ).block()
+            }
+            loadingMessage.delete().subscribe()
+        }
+        dumpChannel.createMessage("Done!").block()
+     }
 }
 
 
@@ -193,6 +258,9 @@ val guildID: Snowflake = Snowflake.of(747884555922440263)
 val classesCategory: Snowflake = Snowflake.of(876685138505904150)
 val carsonID: Snowflake = Snowflake.of(293853365891235841)
 val everyoneRole: Snowflake = Snowflake.of(747884555922440263)
+
+val majorId = Snowflake.of(752600005944279141)
+val minorId = Snowflake.of(752600226086518947)
 
 fun String.normalizeForChannel(): String =
     this.replace(" ", "-")
