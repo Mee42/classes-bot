@@ -1,3 +1,5 @@
+package dev.mee42
+
 import discord4j.common.util.Snowflake
 import kotlinx.serialization.Serializable
 import org.jdbi.v3.core.Handle

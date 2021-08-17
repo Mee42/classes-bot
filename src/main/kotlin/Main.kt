@@ -1,3 +1,5 @@
+package dev.mee42
+
 import com.github.kittinunf.fuel.Fuel
 import com.github.kittinunf.fuel.core.extensions.authentication
 import io.javalin.Javalin

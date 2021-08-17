@@ -3,6 +3,8 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 plugins {
     kotlin("jvm") version "1.5.21"
     kotlin("plugin.serialization") version "1.5.21"
+        id("com.github.johnrengelman.shadow") version "6.0.0"
+
 }
 
 
@@ -45,3 +47,14 @@ val compileTestKotlin: KotlinCompile by tasks
 compileTestKotlin.kotlinOptions {
     jvmTarget = "1.8"
 }
+tasks.withType<Jar> {
+    manifest {
+        attributes(
+                mutableMapOf(
+                        "Main-Class" to "dev.mee42.MainKt"
+                )
+        )
+    }
+}
+
+
