@@ -236,4 +236,4 @@ data class OauthRedirectResponse(val access_token: String,val expires_in: Int,va
 @Serializable
 data class OauthMeResponse(val user: DiscordUSerObject)
 @Serializable
-data class DiscordUSerObject(val id: String, val username: String, val avatar: String, val discriminator: String, val public_flags: Int)
+data class DiscordUSerObject(val id: String, val username: String, val avatar: String?, val discriminator: String, val public_flags: Int)
